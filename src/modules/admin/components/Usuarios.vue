@@ -48,12 +48,47 @@
           <v-card>
             <v-card-title class="text-center grey--text" style="white-space: normal;"> Registra un usuario</v-card-title>
             <v-card-text class="mt-10 text-center">
-                <v-text-field v-model="numeroCuentaUsuario" label="Numero de cuenta del usuario"></v-text-field>
-                <v-text-field v-model="correoUsuario" label="Correo del usuario"></v-text-field>
-                <v-text-field v-model="contrasenaUsuario" label="Contraseña del usuario"></v-text-field>
-                <v-btn color="primary" class="mx-8" @click="agregarUsuario()">
-                  Agregar
-                </v-btn>
+                <div v-if="!publicKey">
+                  <v-text-field v-model="numeroCuentaUsuario" label="Numero de cuenta del usuario"></v-text-field>
+                  <v-text-field v-model="correoUsuario" label="Correo del usuario"></v-text-field>
+                  <v-text-field v-model="contrasenaUsuario" label="Contraseña del usuario" type="password"></v-text-field>
+                  <v-btn color="primary" class="mx-8" @click="agregarUsuario()">
+                    Agregar
+                  </v-btn>
+                </div>
+                
+                <div v-else class="pa-4">
+                  <v-alert type="success" variant="tonal" class="mb-4">
+                    <v-alert-title class="text-h6 mb-2">Usuario creado exitosamente</v-alert-title>
+                    La llave pública ha sido generada. Descarga el archivo y guárdalo en un lugar seguro.
+                  </v-alert>
+                  
+                  <v-card variant="outlined" class="pa-4 mb-4">
+                    <div class="text-subtitle-2 mb-2 font-weight-bold">Información del Usuario:</div>
+                    <div class="mb-2">
+                      <strong>Número de Cuenta:</strong> {{ publicKeyData.usuario?.numeroCuenta }}
+                    </div>
+                    <div class="mb-3">
+                      <strong>Correo:</strong> {{ publicKeyData.usuario?.correo }}
+                    </div>
+                    <div class="text-subtitle-2 mb-2 font-weight-bold">Archivo de Llave Pública:</div>
+                    <div class="text-body-2 mb-3" style="font-family: monospace;">
+                      {{ publicKeyData.publicKeyFile }}
+                    </div>
+                    <v-btn 
+                      color="primary" 
+                      prepend-icon="mdi-download"
+                      @click="descargarPublicKey()"
+                      block
+                    >
+                      Descargar Llave Pública
+                    </v-btn>
+                  </v-card>
+                  
+                  <v-btn color="success" @click="cerrarModal()">
+                    Cerrar
+                  </v-btn>
+                </div>
               </v-card-text>
           </v-card>
         </template>
@@ -69,12 +104,15 @@ import {
   obtenerUsuariosService,
   crearUsuarioService,
 } from "@/services/adminServices.mjs";
+import { baseURL } from "@/general";
 import { onMounted, ref } from "vue";
 
 const dialog = ref(false);
 const numeroCuentaUsuario = ref("");
 const correoUsuario = ref("");
 const contrasenaUsuario = ref("");
+const publicKey = ref("");
+const publicKeyData = ref(null);
 
 const usuarios = ref([]);
 const headers = ref([
@@ -108,7 +146,21 @@ const obtenerUsuarios = async () => {
 };
 
 const openModal = () => {
+  numeroCuentaUsuario.value = "";
+  correoUsuario.value = "";
+  contrasenaUsuario.value = "";
+  publicKey.value = "";
+  publicKeyData.value = null;
   dialog.value = true;
+};
+
+const cerrarModal = () => {
+  numeroCuentaUsuario.value = "";
+  correoUsuario.value = "";
+  contrasenaUsuario.value = "";
+  publicKey.value = "";
+  publicKeyData.value = null;
+  dialog.value = false;
 };
 
 const agregarUsuario = () => {
@@ -128,12 +180,15 @@ const agregarUsuario = () => {
   })
     .then((response) => {
       if (response?.request?.status === 201) {
+        publicKey.value = "success";
+        publicKeyData.value = {
+          usuario: response?.data?.usuario,
+          publicKeyUrl: response?.data?.publicKeyUrl,
+          publicKeyFile: response?.data?.publicKeyFile
+        };
+        console.log("response", response?.data);
         activateSnack("Usuario creado exitosamente", "success");
-        usuarios.value.splice(usuarios.value.length, 0, nuevoUsuario);
-        numeroCuentaUsuario.value = "";
-        correoUsuario.value = "";
-        contrasenaUsuario.value = "";
-        dialog.value = false;
+        obtenerUsuarios();
       } else {
         activateSnack(response?.data?.replyText ?? "", "accent");
       }
@@ -142,6 +197,19 @@ const agregarUsuario = () => {
       console.error("err", err);
       activateSnack("Ocurrió un error", "accent");
     });
+};
+
+const descargarPublicKey = () => {
+  if (publicKeyData.value?.publicKeyUrl) {
+    const url = baseURL + publicKeyData.value.publicKeyUrl;
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = publicKeyData.value.publicKeyFile;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    activateSnack("Descargando llave pública...", "info");
+  }
 };
 
 const activateSnack = (messageParam, color = "primary") => {

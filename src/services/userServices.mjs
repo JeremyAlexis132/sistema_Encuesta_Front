@@ -46,3 +46,32 @@ export const responderEncuestaService = async (values) => {
         return response;
     }
 };
+
+export const generarFirmaService = async (values) => {
+    try {
+        let token = sessionStorage.getItem("token");
+        const config = { headers: { "x-api-key": token } };
+        const response = await userApi.post(
+            "/firma-ciega/generar-firma",
+            values,
+            config
+        );
+        return response;
+    } catch (error) {
+        const response = error.response;
+        return response;
+    }
+};
+
+export const crearUsuarioService = async (values) => {
+    try {
+        const response = await userApi.post(
+            "/auth/registro",
+            values
+        );
+        return response;
+    } catch (error) {
+        const response = error.response;
+        return response;
+    }
+};
