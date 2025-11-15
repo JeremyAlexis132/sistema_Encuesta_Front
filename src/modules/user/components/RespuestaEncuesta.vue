@@ -57,6 +57,32 @@
               Responder Encuesta: {{ encuestaSeleccionada?.Encuestum?.nombre }}
             </v-card-title>
             <v-card-text class="mt-4">
+              <v-file-input
+                v-model="publicKeyFile"
+                label="Selecciona tu archivo de llave pública (.pem)"
+                accept=".pem"
+                variant="outlined"
+                prepend-icon="mdi-key"
+                class="mb-4"
+                required
+                @change="cargarPublicKey"
+                :rules="[v => !!v || 'Debes seleccionar tu archivo de llave pública']"
+              >
+                <template v-slot:selection="{ fileNames }">
+                  <v-chip
+                    color="primary"
+                    label
+                    size="small"
+                  >
+                    {{ fileNames[0] }}
+                  </v-chip>
+                </template>
+              </v-file-input>
+              
+              <v-alert v-if="publicKey" type="info" variant="tonal" class="mb-4">
+                <div class="text-caption">Llave cargada exitosamente</div>
+              </v-alert>
+              
               <div v-for="(pregunta, idx) in encuestaSeleccionada?.Encuestum?.Pregunta" :key="pregunta.idPregunta" class="mb-6">
                 <h3 class="mb-3">{{ idx + 1 }}. {{ pregunta.texto }}</h3>
                 <v-radio-group v-model="respuestas[pregunta.idPregunta]">
@@ -71,7 +97,12 @@
               </div>
               
               <div class="text-center mt-6">
-                <v-btn color="primary" class="mx-2" @click="guardarRespuestas()">
+                <v-btn 
+                  color="primary" 
+                  class="mx-2" 
+                  @click="guardarRespuestas()"
+                  :disabled="!publicKey || publicKey.trim() === ''"
+                >
                   Guardar Respuestas
                 </v-btn>
                 <v-btn color="error" class="mx-2" @click="cerrarModal()">
@@ -91,13 +122,16 @@ import GeneralModal from "@/components/GeneralModal.vue";
 import SnackBar from "@/components/SnackBar.vue";
 import {
   obtenerEncuestaAsignadaService,
-  responderEncuestaService
+  responderEncuestaService,
+  generarFirmaService
 } from "@/services/userServices.mjs";
 import { onMounted, ref} from "vue";
 
 const dialog = ref(false);
 const encuestaSeleccionada = ref(null);
 const respuestas = ref({});
+const publicKey = ref("");
+const publicKeyFile = ref(null);
 
 const encuestas = ref([]);
 const headers = ref([
@@ -136,6 +170,8 @@ const getNestedValue = (obj, path) => {
 const openModal = (encuesta) => {
   encuestaSeleccionada.value = encuesta;
   respuestas.value = {};
+  publicKey.value = "";
+  publicKeyFile.value = null;
   dialog.value = true;
 };
 
@@ -143,9 +179,40 @@ const cerrarModal = () => {
   dialog.value = false;
   encuestaSeleccionada.value = null;
   respuestas.value = {};
+  publicKey.value = "";
+  publicKeyFile.value = null;
 };
 
-const guardarRespuestas = () => {
+const cargarPublicKey = async (event) => {
+  const file = event.target.files?.[0] || publicKeyFile.value?.[0];
+  
+  if (!file) {
+    publicKey.value = "";
+    return;
+  }
+  
+  // Validar que sea un archivo .pem
+  if (!file.name.endsWith('.pem')) {
+    activateSnack("Por favor selecciona un archivo .pem válido", "accent");
+    publicKey.value = "";
+    publicKeyFile.value = null;
+    return;
+  }
+  
+  try {
+    // Leer el contenido del archivo
+    const fileContent = await file.text();
+    publicKey.value = fileContent;
+    activateSnack("Llave cargada exitosamente", "success");
+  } catch (error) {
+    console.error("Error al leer el archivo:", error);
+    activateSnack("Error al leer el archivo de llave", "accent");
+    publicKey.value = "";
+    publicKeyFile.value = null;
+  }
+};
+
+const guardarRespuestas = async () => {
   // Validar que todas las preguntas tengan respuesta
   const preguntas = encuestaSeleccionada.value?.Encuestum?.Pregunta || [];
   
@@ -156,30 +223,54 @@ const guardarRespuestas = () => {
     }
   }
   
-  // Crear arreglo de respuestas para mostrar en consola
+  // Validar que se haya ingresado la publicKey
+  if (!publicKey.value || publicKey.value.trim() === '') {
+    activateSnack("Por favor, ingresa tu llave de acceso", "accent");
+    return;
+  }
+  
+  // Crear arreglo de respuestas
   const respuestasArray = preguntas.map(pregunta => ({
     idPregunta: pregunta.idPregunta,
     idOpcionRespuesta: respuestas.value[pregunta.idPregunta]
   }));
-    
-  // TODO: Llamar al servicio para guardar las respuestas
-  responderEncuestaService({ data: respuestasArray })
-    .then((response) => {
-      if (response?.status === 200) {
-        activateSnack("Respuestas guardadas exitosamente", "success");
-        recargaData();
-        cerrarModal();
-      } else {
-        activateSnack(response?.data?.replyText ?? "", "accent");
-      }
-    })
-    .catch((err) => {
-      console.error("err", err);
-      activateSnack("Ocurrió un error", "accent");
-    });
   
-  activateSnack("Respuestas guardadas exitosamente", "success");
-  cerrarModal();
+  try {
+    // Paso 1: Solicitar firma al servidor
+    activateSnack("Generando firma...", "info");
+    
+    const firmaResponse = await generarFirmaService({
+      publicKey: publicKey.value,
+      data: respuestasArray
+    });
+    
+    if (firmaResponse?.status !== 200 || !firmaResponse?.data?.firma) {
+      activateSnack(firmaResponse?.data?.error || "Error al generar la firma", "accent");
+      return;
+    }
+    
+    const firma = firmaResponse.data.firma;
+    
+    // Paso 2: Enviar respuestas con la firma generada
+    activateSnack("Enviando respuestas...", "info");
+    
+    const response = await responderEncuestaService({
+      publicKey: publicKey.value,
+      firma: firma,
+      data: respuestasArray
+    });
+    
+    if (response?.status === 200) {
+      activateSnack("Respuestas guardadas exitosamente", "success");
+      await recargaData();
+      cerrarModal();
+    } else {
+      activateSnack(response?.data?.error || "Error al guardar las respuestas", "accent");
+    }
+  } catch (err) {
+    console.error("Error en guardarRespuestas:", err);
+    activateSnack("Ocurrió un error al procesar las respuestas", "accent");
+  }
 };
 
 const recargaData = async () => {
