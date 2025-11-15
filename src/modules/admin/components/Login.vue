@@ -1,7 +1,7 @@
 <template>
   <v-layout>
     <v-card class="my-4 mx-4 px-4 py-4" height="auto" max-width="400" width="100%" elevation="5">
-      <v-card-title class="my-5 text-wrap">Sistema de encuestas</v-card-title>
+      <v-card-title class="my-5 text-wrap">Sistema de encuestas<br>Administración</v-card-title>
       <v-card-text>
         <v-form @submit.prevent="validateForm" v-model="valid">
           <v-row>
@@ -59,7 +59,7 @@ import { ref } from 'vue'
 import { rules } from "@/constants/rules";
 import router from "@/router";
 import SnackBar from "@/components/SnackBar.vue";
-import { userLogin } from "@/services/userServices.mjs";
+import { adminLogin } from "@/services/adminServices.mjs";
 const username = ref("");
 const valid = ref(false);
 const password = ref("");
@@ -70,15 +70,15 @@ const messageAlert = ref("");
 const colorAlert = ref("");
 
   const validateForm = async () => {
-    await userLogin({
-      numeroCuenta: username.value,
+    await adminLogin({
+      username: username.value,
       password: password.value,
     })
     .then((response) =>{
       if (response?.request?.status === 200){
         sessionStorage.setItem("token", response.data?.token);
         activateSnack("Inicio de sesión exitoso", "success");
-        router.push({ path: "/panel" });
+        router.push({ path: "/panelAdmin" });
         return;
       }
       activateSnack(response?.data?.replyText ?? "Datos de acceso inválidos", "info");
