@@ -62,3 +62,16 @@ export const generarFirmaService = async (values) => {
         return response;
     }
 };
+
+export const crearUsuarioService = async (values) => {
+    try {
+        const response = await userApi.post(
+            "/auth/registro",
+            values
+        );
+        return response;
+    } catch (error) {
+        const response = error.response;
+        return response;
+    }
+};
