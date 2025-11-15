@@ -1,6 +1,8 @@
 import { createRouter, createWebHistory } from "vue-router/auto";
 import LoginUser from "@/modules/user/views/LoginView.vue";
 import userRouter from "@/modules/user/router";
+import LoginAdmin from "@/modules/admin/views/LoginView.vue";
+import adminRouter from "@/modules/admin/router";
 import PageNotFound from "@/components/PageNotFound.vue";
 
 const routes = [
@@ -17,6 +19,15 @@ const routes = [
   {
     path: "/user",
     ...userRouter
+  },
+  {
+    path: "/admin",
+    name: "adminLogin",
+    component: () => Promise.resolve(LoginAdmin),
+  },
+  {
+    path: "/admin",
+    ...adminRouter
   },
   {
     path: "/:pathMatch(.*)*",
